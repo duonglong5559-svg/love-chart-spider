@@ -1,0 +1,139 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 7%;
+    --foreground: 210 20% 90%;
+
+    --card: 220 18% 10%;
+    --card-foreground: 210 20% 90%;
+
+    --popover: 220 18% 12%;
+    --popover-foreground: 210 20% 90%;
+
+    --primary: 187 100% 45%;
+    --primary-foreground: 220 20% 7%;
+
+    --secondary: 220 15% 16%;
+    --secondary-foreground: 210 20% 80%;
+
+    --muted: 220 15% 14%;
+    --muted-foreground: 215 15% 50%;
+
+    --accent: 187 100% 45%;
+    --accent-foreground: 220 20% 7%;
+
+    --destructive: 348 100% 55%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 15% 18%;
+    --input: 220 15% 18%;
+    --ring: 187 100% 45%;
+
+    --radius: 0.5rem;
+
+    /* Trading specific */
+    --bull: 145 100% 45%;
+    --bear: 348 100% 55%;
+    --bull-muted: 145 60% 25%;
+    --bear-muted: 348 60% 25%;
+    --chart-bg: 220 20% 8%;
+    --grid-line: 220 15% 15%;
+    --pivot: 45 100% 55%;
+    --signal-buy: 145 100% 45%;
+    --signal-sell: 348 100% 55%;
+    --glow-cyan: 187 100% 45%;
+
+    --sidebar-background: 220 18% 10%;
+    --sidebar-foreground: 210 20% 80%;
+    --sidebar-primary: 187 100% 45%;
+    --sidebar-primary-foreground: 220 20% 7%;
+    --sidebar-accent: 220 15% 16%;
+    --sidebar-accent-foreground: 210 20% 80%;
+    --sidebar-border: 220 15% 18%;
+    --sidebar-ring: 187 100% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer utilities {
+  .glow-cyan {
+    box-shadow: 0 0 20px hsl(var(--glow-cyan) / 0.15), 0 0 40px hsl(var(--glow-cyan) / 0.05);
+  }
+
+  .text-bull {
+    color: hsl(var(--bull));
+  }
+
+  .text-bear {
+    color: hsl(var(--bear));
+  }
+
+  .bg-bull {
+    background-color: hsl(var(--bull));
+  }
+
+  .bg-bear {
+    background-color: hsl(var(--bear));
+  }
+
+  .bg-bull-muted {
+    background-color: hsl(var(--bull-muted));
+  }
+
+  .bg-bear-muted {
+    background-color: hsl(var(--bear-muted));
+  }
+
+  .bg-chart {
+    background-color: hsl(var(--chart-bg));
+  }
+
+  .border-grid {
+    border-color: hsl(var(--grid-line));
+  }
+
+  .text-pivot {
+    color: hsl(var(--pivot));
+  }
+
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .animate-ticker {
+    animation: tickerScroll 25s linear infinite;
+  }
+
+  .animate-ticker:hover {
+    animation-play-state: paused;
+  }
+
+  @keyframes tickerScroll {
+    0% { transform: translateX(100%); }
+    100% { transform: translateX(-100%); }
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
