@@ -42,36 +42,36 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: 'hsl(220, 20%, 7%)' },
-        textColor: 'hsl(215, 15%, 50%)',
+        background: { type: ColorType.Solid, color: '#0f1318' },
+        textColor: '#6b7280',
         fontFamily: "'JetBrains Mono', monospace",
         fontSize: 10,
       },
       grid: {
-        vertLines: { color: 'hsl(220, 15%, 12%)', style: 1 },
-        horzLines: { color: 'hsl(220, 15%, 12%)', style: 1 },
+        vertLines: { color: '#1e2530', style: 1 },
+        horzLines: { color: '#1e2530', style: 1 },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
         vertLine: {
-          color: 'hsl(187, 100%, 45%)',
+          color: '#00c8e6',
           width: 1,
           style: 2,
-          labelBackgroundColor: 'hsl(220, 18%, 15%)',
+          labelBackgroundColor: '#1a2030',
         },
         horzLine: {
-          color: 'hsl(187, 100%, 45%)',
+          color: '#00c8e6',
           width: 1,
           style: 2,
-          labelBackgroundColor: 'hsl(220, 18%, 15%)',
+          labelBackgroundColor: '#1a2030',
         },
       },
       rightPriceScale: {
-        borderColor: 'hsl(220, 15%, 18%)',
+        borderColor: '#252d3a',
         scaleMargins: { top: 0.1, bottom: 0.25 },
       },
       timeScale: {
-        borderColor: 'hsl(220, 15%, 18%)',
+        borderColor: '#252d3a',
         timeVisible: true,
         secondsVisible: false,
       },
@@ -79,12 +79,12 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
     });
 
     const candleSeries = chart.addCandlestickSeries({
-      upColor: 'hsl(145, 80%, 50%)',
-      downColor: 'hsl(348, 80%, 55%)',
-      borderUpColor: 'hsl(145, 80%, 50%)',
-      borderDownColor: 'hsl(348, 80%, 55%)',
-      wickUpColor: 'hsl(145, 60%, 45%)',
-      wickDownColor: 'hsl(348, 60%, 50%)',
+      upColor: '#26c682',
+      downColor: '#ef5350',
+      borderUpColor: '#26c682',
+      borderDownColor: '#ef5350',
+      wickUpColor: '#1fa06a',
+      wickDownColor: '#d44040',
     });
 
     const volumeSeries = chart.addHistogramSeries({
@@ -97,14 +97,14 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
     });
 
     const ema9Series = chart.addLineSeries({
-      color: 'hsl(187, 100%, 55%)',
+      color: '#00d4ff',
       lineWidth: 1,
       title: 'EMA 9',
       crosshairMarkerVisible: false,
     });
 
     const ema21Series = chart.addLineSeries({
-      color: 'hsl(45, 100%, 55%)',
+      color: '#ffcc00',
       lineWidth: 1,
       title: 'EMA 21',
       crosshairMarkerVisible: false,
@@ -169,7 +169,7 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
     // Add price lines for pivots and AI levels
     candleSeriesRef.current.createPriceLine({
       price: pivots.pp,
-      color: 'hsl(45, 100%, 55%)',
+      color: '#ffcc00',
       lineWidth: 1,
       lineStyle: 2,
       axisLabelVisible: true,
@@ -177,12 +177,12 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
     });
 
     const pivotLines = [
-      { price: pivots.r1, color: 'hsl(348, 80%, 50%)', title: 'R1' },
-      { price: pivots.r2, color: 'hsl(348, 90%, 55%)', title: 'R2' },
-      { price: pivots.r3, color: 'hsl(348, 100%, 60%)', title: 'R3' },
-      { price: pivots.s1, color: 'hsl(145, 60%, 45%)', title: 'S1' },
-      { price: pivots.s2, color: 'hsl(145, 80%, 50%)', title: 'S2' },
-      { price: pivots.s3, color: 'hsl(145, 100%, 55%)', title: 'S3' },
+      { price: pivots.r1, color: '#e05050', title: 'R1' },
+      { price: pivots.r2, color: '#e83e3e', title: 'R2' },
+      { price: pivots.r3, color: '#ff3333', title: 'R3' },
+      { price: pivots.s1, color: '#20a060', title: 'S1' },
+      { price: pivots.s2, color: '#26c682', title: 'S2' },
+      { price: pivots.s3, color: '#2ee68e', title: 'S3' },
     ];
 
     pivotLines.forEach(pl => {
@@ -199,7 +199,7 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
     // AI levels
     if (aiLevels) {
       aiLevels.forEach(level => {
-        const color = level.type === 'resistance' ? 'hsl(348, 100%, 55%)' : 'hsl(145, 100%, 45%)';
+        const color = level.type === 'resistance' ? '#ff3333' : '#00e676';
         candleSeriesRef.current?.createPriceLine({
           price: level.price,
           color,
@@ -215,7 +215,7 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
     if (buyZone) {
       candleSeriesRef.current.createPriceLine({
         price: buyZone,
-        color: 'hsl(145, 100%, 45%)',
+        color: '#00e676',
         lineWidth: 2,
         lineStyle: 1,
         axisLabelVisible: true,
@@ -225,7 +225,7 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
     if (sellZone) {
       candleSeriesRef.current.createPriceLine({
         price: sellZone,
-        color: 'hsl(348, 100%, 55%)',
+        color: '#ff3333',
         lineWidth: 2,
         lineStyle: 1,
         axisLabelVisible: true,
