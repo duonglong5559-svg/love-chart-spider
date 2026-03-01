@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Candle, PivotLevels, CandlePattern } from '@/lib/tradingData';
+import { type MultiTFAnalysis } from '@/hooks/useMultiTimeframe';
 import { Brain, Loader2, RefreshCw, TrendingUp, TrendingDown, Minus, Target, AlertTriangle, Zap, CheckCircle2, XCircle, Timer } from 'lucide-react';
 import { toast } from 'sonner';
 import MarketInsightsPanel, { type MarketInsights } from './MarketInsightsPanel';
@@ -67,12 +68,13 @@ interface Props {
   onAnalysisUpdate?: (analysis: AIAnalysis | null) => void;
   autoRefresh?: boolean;
   candleCloseCount?: number;
+  multiTFData?: MultiTFAnalysis | null;
 }
 
 const ANALYZE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-market`;
 const AUTO_REFRESH_INTERVAL = 180000; // 3 minutes
 
-export default function AISignalPanel({ candles, pivots, patterns, rsiValue, macdValue, symbol, timeframe, sentiment, onAnalysisUpdate, autoRefresh = true, candleCloseCount = 0 }: Props) {
+export default function AISignalPanel({ candles, pivots, patterns, rsiValue, macdValue, symbol, timeframe, sentiment, onAnalysisUpdate, autoRefresh = true, candleCloseCount = 0, multiTFData }: Props) {
   const [analysis, setAnalysis] = useState<AIAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string>('');
@@ -111,6 +113,21 @@ export default function AISignalPanel({ candles, pivots, patterns, rsiValue, mac
             trend: analysis.trend,
             entries: analysis.entries,
             marketStructure: analysis.marketStructure,
+          } : null,
+          multiTFData: multiTFData ? {
+            overallBias: multiTFData.overallBias,
+            confluenceScore: multiTFData.confluenceScore,
+            htfTrend: multiTFData.htfTrend,
+            timeframes: multiTFData.timeframes.map(tf => ({
+              timeframe: tf.timeframe,
+              trend: tf.trend,
+              rsi: tf.rsi,
+              macdHistogram: tf.macdHistogram,
+              ema9: tf.ema9,
+              ema21: tf.ema21,
+              bullPct: tf.bullPct,
+              patterns: tf.patterns,
+            })),
           } : null,
         }),
       });

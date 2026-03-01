@@ -142,40 +142,109 @@ export function detectPatterns(candles: Candle[]): CandlePattern[] {
     const range = c.high - c.low;
     const upperShadow = c.high - Math.max(c.open, c.close);
     const lowerShadow = Math.min(c.open, c.close) - c.low;
+    const prevBody = Math.abs(prev.close - prev.open);
+    const prevRange = prev.high - prev.low;
     
+    // Doji
     if (body < range * 0.1 && range > 2) {
       patterns.push({ name: 'Doji', nameVi: 'Nến Doji', type: 'neutral', description: 'Thị trường do dự, có thể đảo chiều', index: i });
     }
     
+    // Gravestone Doji
+    if (body < range * 0.1 && upperShadow > range * 0.6 && lowerShadow < range * 0.1 && range > 2) {
+      patterns.push({ name: 'Gravestone Doji', nameVi: 'Doji Bia Mộ', type: 'bearish', description: 'Tín hiệu đảo chiều giảm mạnh - phe mua bị từ chối hoàn toàn', index: i });
+    }
+    
+    // Dragonfly Doji
+    if (body < range * 0.1 && lowerShadow > range * 0.6 && upperShadow < range * 0.1 && range > 2) {
+      patterns.push({ name: 'Dragonfly Doji', nameVi: 'Doji Chuồn Chuồn', type: 'bullish', description: 'Tín hiệu đảo chiều tăng - phe bán bị từ chối', index: i });
+    }
+    
+    // Hammer
     if (lowerShadow > body * 2 && upperShadow < body * 0.5 && c.close > c.open) {
       patterns.push({ name: 'Hammer', nameVi: 'Nến Búa', type: 'bullish', description: 'Tín hiệu đảo chiều tăng', index: i });
     }
     
+    // Inverted Hammer
+    if (upperShadow > body * 2 && lowerShadow < body * 0.5 && c.close > c.open) {
+      patterns.push({ name: 'Inverted Hammer', nameVi: 'Búa Ngược', type: 'bullish', description: 'Tín hiệu đảo chiều tăng tiềm năng', index: i });
+    }
+    
+    // Shooting Star
     if (upperShadow > body * 2 && lowerShadow < body * 0.5 && c.close < c.open) {
       patterns.push({ name: 'Shooting Star', nameVi: 'Sao Băng', type: 'bearish', description: 'Tín hiệu đảo chiều giảm', index: i });
     }
     
+    // Hanging Man
+    if (lowerShadow > body * 2 && upperShadow < body * 0.5 && c.close < c.open) {
+      patterns.push({ name: 'Hanging Man', nameVi: 'Người Treo Cổ', type: 'bearish', description: 'Tín hiệu đảo chiều giảm tại đỉnh', index: i });
+    }
+    
+    // Bullish Engulfing
     if (prev.close < prev.open && c.close > c.open && c.open < prev.close && c.close > prev.open) {
       patterns.push({ name: 'Bullish Engulfing', nameVi: 'Nhấn Chìm Tăng', type: 'bullish', description: 'Mẫu hình đảo chiều tăng mạnh', index: i });
     }
     
+    // Bearish Engulfing
     if (prev.close > prev.open && c.close < c.open && c.open > prev.close && c.close < prev.open) {
       patterns.push({ name: 'Bearish Engulfing', nameVi: 'Nhấn Chìm Giảm', type: 'bearish', description: 'Mẫu hình đảo chiều giảm mạnh', index: i });
     }
+    
+    // Piercing Line (bullish)
+    if (prev.close < prev.open && c.close > c.open && c.open < prev.low && c.close > (prev.open + prev.close) / 2 && c.close < prev.open) {
+      patterns.push({ name: 'Piercing Line', nameVi: 'Đường Xuyên', type: 'bullish', description: 'Nến tăng xuyên qua >50% thân nến giảm trước - đảo chiều tăng', index: i });
+    }
+    
+    // Dark Cloud Cover (bearish)
+    if (prev.close > prev.open && c.close < c.open && c.open > prev.high && c.close < (prev.open + prev.close) / 2 && c.close > prev.open) {
+      patterns.push({ name: 'Dark Cloud Cover', nameVi: 'Mây Đen Bao Phủ', type: 'bearish', description: 'Nến giảm xuyên qua >50% thân nến tăng trước - đảo chiều giảm', index: i });
+    }
+    
+    // Tweezer Bottom (bullish)
+    if (Math.abs(c.low - prev.low) < range * 0.05 && prev.close < prev.open && c.close > c.open) {
+      patterns.push({ name: 'Tweezer Bottom', nameVi: 'Đáy Nhíp', type: 'bullish', description: 'Hai nến có đáy bằng nhau - hỗ trợ mạnh', index: i });
+    }
+    
+    // Tweezer Top (bearish)
+    if (Math.abs(c.high - prev.high) < range * 0.05 && prev.close > prev.open && c.close < c.open) {
+      patterns.push({ name: 'Tweezer Top', nameVi: 'Đỉnh Nhíp', type: 'bearish', description: 'Hai nến có đỉnh bằng nhau - kháng cự mạnh', index: i });
+    }
 
-    // Three White Soldiers
+    // Multi-candle patterns (need i >= 2)
     if (i >= 2) {
       const pp = candles[i - 2];
+      const ppBody = Math.abs(pp.close - pp.open);
+      const ppRange = pp.high - pp.low;
+      
+      // Three White Soldiers
       if (pp.close > pp.open && prev.close > prev.open && c.close > c.open && prev.close > pp.close && c.close > prev.close) {
         patterns.push({ name: 'Three White Soldiers', nameVi: 'Ba Lính Trắng', type: 'bullish', description: 'Ba nến tăng liên tiếp - xu hướng tăng mạnh', index: i });
       }
+      
+      // Three Black Crows
       if (pp.close < pp.open && prev.close < prev.open && c.close < c.open && prev.close < pp.close && c.close < prev.close) {
         patterns.push({ name: 'Three Black Crows', nameVi: 'Ba Con Quạ Đen', type: 'bearish', description: 'Ba nến giảm liên tiếp - xu hướng giảm mạnh', index: i });
+      }
+      
+      // Morning Star (bullish reversal)
+      if (pp.close < pp.open && ppBody > ppRange * 0.5 && // big bearish candle
+          prevBody < prevRange * 0.3 && // small body (star)
+          c.close > c.open && body > range * 0.5 && // big bullish candle
+          c.close > (pp.open + pp.close) / 2) { // closes above midpoint of first candle
+        patterns.push({ name: 'Morning Star', nameVi: 'Sao Mai', type: 'bullish', description: 'Mẫu hình 3 nến đảo chiều tăng mạnh', index: i });
+      }
+      
+      // Evening Star (bearish reversal)
+      if (pp.close > pp.open && ppBody > ppRange * 0.5 && // big bullish candle
+          prevBody < prevRange * 0.3 && // small body (star)
+          c.close < c.open && body > range * 0.5 && // big bearish candle
+          c.close < (pp.open + pp.close) / 2) { // closes below midpoint of first candle
+        patterns.push({ name: 'Evening Star', nameVi: 'Sao Hôm', type: 'bearish', description: 'Mẫu hình 3 nến đảo chiều giảm mạnh', index: i });
       }
     }
   }
   
-  return patterns.slice(-8);
+  return patterns.slice(-12);
 }
 
 export function generateSignals(candles: Candle[], pivots: PivotLevels): Signal[] {
