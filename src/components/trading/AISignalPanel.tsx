@@ -81,13 +81,16 @@ export default function AISignalPanel({ candles, pivots, patterns, rsiValue, mac
   const hasAutoAnalyzed = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [creditExhausted, setCreditExhausted] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const analyze = useCallback(async () => {
-    if (!pivots || candles.length < 10 || cooldownRef.current) return;
+    if (!pivots || candles.length < 10 || cooldownRef.current || creditExhausted) return;
     cooldownRef.current = true;
     setTimeout(() => { cooldownRef.current = false; }, 10000);
 
     setLoading(true);
+    setErrorMessage(null);
     try {
       const resp = await fetch(ANALYZE_URL, {
         method: 'POST',
@@ -114,7 +117,19 @@ export default function AISignalPanel({ candles, pivots, patterns, rsiValue, mac
 
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
-        throw new Error(err.error || `HTTP ${resp.status}`);
+        const msg = err.error || `HTTP ${resp.status}`;
+        if (resp.status === 402) {
+          setCreditExhausted(true);
+          setErrorMessage('Hết credit AI. Vui lòng nạp thêm credit để tiếp tục sử dụng.');
+          toast.error('⚠️ Hết credit AI. Auto-refresh đã tắt.', { duration: 8000 });
+          return;
+        }
+        if (resp.status === 429) {
+          setErrorMessage('Rate limit - thử lại sau 1 phút.');
+          toast.warning('⏳ Rate limit, thử lại sau...', { duration: 5000 });
+          return;
+        }
+        throw new Error(msg);
       }
 
       const data: AIAnalysis = await resp.json();
@@ -126,11 +141,12 @@ export default function AISignalPanel({ candles, pivots, patterns, rsiValue, mac
         toast.success(`🧠 AI: ${data.entries.length} tín hiệu ≥90% WR`, { duration: 5000 });
       }
     } catch (e: any) {
+      setErrorMessage(e.message || 'Lỗi phân tích AI');
       toast.error(e.message || 'Lỗi phân tích AI');
     } finally {
       setLoading(false);
     }
-  }, [candles, pivots, patterns, rsiValue, macdValue, symbol, timeframe, sentiment, onAnalysisUpdate]);
+  }, [candles, pivots, patterns, rsiValue, macdValue, symbol, timeframe, sentiment, onAnalysisUpdate, creditExhausted]);
 
   // Auto-analyze on first load
   useEffect(() => {
@@ -147,9 +163,13 @@ export default function AISignalPanel({ candles, pivots, patterns, rsiValue, mac
     onAnalysisUpdate?.(null);
   }, [symbol, timeframe]);
 
-  // Auto-refresh on interval
+  // Auto-refresh on interval (stop if credits exhausted)
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!autoRefresh || creditExhausted) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      return;
+    }
     
     // Set countdown
     setNextRefresh(AUTO_REFRESH_INTERVAL / 1000);
@@ -168,11 +188,11 @@ export default function AISignalPanel({ candles, pivots, patterns, rsiValue, mac
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, [autoRefresh, pivots, candles.length, analyze]);
+  }, [autoRefresh, pivots, candles.length, analyze, creditExhausted]);
 
   // Re-analyze when candle closes
   useEffect(() => {
-    if (candleCloseCount > 0 && pivots && candles.length >= 10 && hasAutoAnalyzed.current) {
+    if (candleCloseCount > 0 && pivots && candles.length >= 10 && hasAutoAnalyzed.current && !creditExhausted) {
       analyze();
       setNextRefresh(AUTO_REFRESH_INTERVAL / 1000);
     }
@@ -192,15 +212,26 @@ export default function AISignalPanel({ candles, pivots, patterns, rsiValue, mac
       {/* Analyze Button + Auto Status */}
       <div className="flex items-center gap-3 flex-wrap">
         <button
-          onClick={analyze}
+          onClick={() => { setCreditExhausted(false); setErrorMessage(null); analyze(); }}
           disabled={loading || !pivots}
           className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-40 hover:opacity-90 transition-all glow-cyan"
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
-          {loading ? 'AI đang phân tích...' : 'Phân tích AI (≥90% WR)'}
+          {creditExhausted ? 'Thử lại' : loading ? 'AI đang phân tích...' : 'Phân tích AI (≥90% WR)'}
         </button>
+
+        {(creditExhausted || errorMessage) && (
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs ${
+            creditExhausted 
+              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' 
+              : 'bg-bear/10 text-bear border border-bear/20'
+          }`}>
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
         
-        {autoRefresh && (
+        {autoRefresh && !creditExhausted && (
           <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-secondary text-[10px] text-muted-foreground font-mono">
             <Timer className="w-3 h-3" />
             <span>Auto: {formatCountdown(nextRefresh)}</span>
