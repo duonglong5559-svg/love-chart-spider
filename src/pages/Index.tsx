@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { calculatePivots, detectPatterns, generateSignals, generateAlerts, calculateRSI, calculateMACD, generateTrendLines, getSentiment, getPivotAnalysis } from '@/lib/tradingData';
 import { type AIAnalysis } from '@/components/trading/AISignalPanel';
 import { useBinanceData } from '@/hooks/useBinanceData';
+import { useMultiTimeframe } from '@/hooks/useMultiTimeframe';
 import TradingViewChart from '@/components/trading/TradingViewChart';
 import PriceTicker from '@/components/trading/PriceTicker';
 import PivotTable from '@/components/trading/PivotTable';
@@ -15,7 +16,9 @@ import MACDChart from '@/components/trading/MACDChart';
 import AIChatPanel from '@/components/trading/AIChatPanel';
 import AISignalPanel from '@/components/trading/AISignalPanel';
 import NewsPanel from '@/components/trading/NewsPanel';
-import { Activity, Wifi, WifiOff, Loader2, TrendingUp, Target, BarChart3, Bot, Brain, Newspaper, Sparkles } from 'lucide-react';
+import ConfluenceScoring from '@/components/trading/ConfluenceScoring';
+import MultiTFPanel from '@/components/trading/MultiTFPanel';
+import { Activity, Wifi, WifiOff, Loader2, TrendingUp, Target, BarChart3, Bot, Brain, Newspaper, Sparkles, Layers } from 'lucide-react';
 
 const SYMBOLS = [
   { value: 'BTCUSDT', label: 'BTC', icon: '₿' },
@@ -27,7 +30,7 @@ const SYMBOLS = [
   { value: 'DOGEUSDT', label: 'DOGE', icon: '🐕' },
 ];
 
-type TabKey = 'signals' | 'analysis' | 'trends' | 'indicators' | 'news' | 'ai';
+type TabKey = 'signals' | 'analysis' | 'trends' | 'indicators' | 'news' | 'ai' | 'mtf';
 
 const Index = () => {
   const [symbol, setSymbol] = useState('BTCUSDT');
@@ -36,6 +39,7 @@ const Index = () => {
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
 
   const { candles, loading, error, connected, candleCloseCount } = useBinanceData(symbol, timeframe);
+  const { analysis: multiTFAnalysis, loading: mtfLoading } = useMultiTimeframe(symbol, timeframe);
 
   const pivots = useMemo(() => candles.length > 0 ? calculatePivots(candles) : null, [candles]);
   const patterns = useMemo(() => detectPatterns(candles), [candles]);
@@ -59,6 +63,7 @@ const Index = () => {
   const tabs: { key: TabKey; label: string; icon: React.ReactNode; count?: number }[] = [
     { key: 'signals', label: 'AI Signals', icon: <Brain className="w-3.5 h-3.5" /> },
     { key: 'analysis', label: 'Phân tích', icon: <TrendingUp className="w-3.5 h-3.5" /> },
+    { key: 'mtf', label: 'Đa khung TG', icon: <Layers className="w-3.5 h-3.5" />, count: multiTFAnalysis?.timeframes?.length },
     { key: 'trends', label: 'Xu hướng', icon: <Target className="w-3.5 h-3.5" />, count: aiAnalysis?.aiTrendLines?.length || trendLines.length },
     { key: 'indicators', label: 'Chỉ báo', icon: <BarChart3 className="w-3.5 h-3.5" /> },
     { key: 'news', label: 'Tin tức', icon: <Newspaper className="w-3.5 h-3.5" /> },
@@ -260,19 +265,31 @@ const Index = () => {
             <div className="p-4 max-h-[60vh] overflow-y-auto">
               <div className="animate-fade-in">
                 {activeTab === 'signals' && (
-                  <AISignalPanel
-                    candles={candles}
-                    pivots={pivots}
-                    patterns={patterns}
-                    rsiValue={rsiData[rsiData.length - 1]}
-                    macdValue={macdData.histogram[macdData.histogram.length - 1]}
-                    symbol={symbol}
-                    timeframe={timeframe}
-                    sentiment={sentiment}
-                    onAnalysisUpdate={handleAIAnalysisUpdate}
-                    autoRefresh={true}
-                    candleCloseCount={candleCloseCount}
-                  />
+                  <div className="space-y-3">
+                    <ConfluenceScoring
+                      candles={candles}
+                      pivots={pivots}
+                      patterns={patterns}
+                      rsiValue={rsiData[rsiData.length - 1]}
+                      macdValue={macdData.histogram[macdData.histogram.length - 1]}
+                      sentiment={sentiment}
+                      multiTF={multiTFAnalysis}
+                    />
+                    <AISignalPanel
+                      candles={candles}
+                      pivots={pivots}
+                      patterns={patterns}
+                      rsiValue={rsiData[rsiData.length - 1]}
+                      macdValue={macdData.histogram[macdData.histogram.length - 1]}
+                      symbol={symbol}
+                      timeframe={timeframe}
+                      sentiment={sentiment}
+                      onAnalysisUpdate={handleAIAnalysisUpdate}
+                      autoRefresh={true}
+                      candleCloseCount={candleCloseCount}
+                      multiTFData={multiTFAnalysis}
+                    />
+                  </div>
                 )}
 
                 {activeTab === 'analysis' && (
@@ -283,6 +300,10 @@ const Index = () => {
                       <PatternPanel patterns={patterns} />
                     </div>
                   </div>
+                )}
+
+                {activeTab === 'mtf' && (
+                  <MultiTFPanel analysis={multiTFAnalysis} loading={mtfLoading} />
                 )}
 
                 {activeTab === 'trends' && (

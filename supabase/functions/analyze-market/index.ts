@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { candles, symbol, timeframe, pivots, rsi, macd, patterns, sentiment, previousAnalysis } = await req.json();
+    const { candles, symbol, timeframe, pivots, rsi, macd, patterns, sentiment, previousAnalysis, multiTFData } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
@@ -213,6 +213,18 @@ PHẢI trả về ĐÚNG format JSON sau, KHÔNG kèm markdown hay text nào kh�
   }
 }`;
 
+    // Multi-timeframe context
+    let multiTFContext = '';
+    if (multiTFData && multiTFData.timeframes && multiTFData.timeframes.length > 0) {
+      multiTFContext = `\n=== ĐA KHUNG THỜI GIAN (HIGHER TIMEFRAMES) ===
+HTF BIAS: ${multiTFData.overallBias} (Confluence: ${multiTFData.confluenceScore}%)
+${multiTFData.timeframes.map((tf: any) => 
+  `${tf.timeframe}: Trend=${tf.trend} | RSI=${tf.rsi?.toFixed(1)} | MACD=${tf.macdHistogram?.toFixed(2)} | EMA9=${tf.ema9?.toFixed(2)} > EMA21=${tf.ema21?.toFixed(2)} | Bull=${tf.bullPct}% | Patterns: ${tf.patterns?.join(', ') || 'None'}`
+).join('\n')}
+QUY TẮC: Khung lớn xác định xu hướng chính, khung nhỏ tìm điểm vào. KHÔNG vào lệnh ngược HTF trừ khi có CHoCH rõ ràng.
+`;
+    }
+
     const userContent = `SYMBOL: ${symbol} | TIMEFRAME: ${timeframe} | CANDLE_COUNT: ${candleData.length}
 
 === PRE-COMPUTED TECHNICAL CONTEXT ===
@@ -224,7 +236,7 @@ VOLUME RATIO (recent/avg): ${volRatio}x
 AVG VOLUME: ${Math.round(avgVol)}
 WYCKOFF HINT: ${wyckoffHint}
 RANGE CONTRACTION: ${(rangeContraction * 100).toFixed(1)}%
-
+${multiTFContext}
 === RAW CANDLE DATA (index 0 = oldest) ===
 ${candleData.map((c: any, i: number) => 
   `[${i}] ${c.time} | O:${c.open} H:${c.high} L:${c.low} C:${c.close} V:${Math.round(c.volume)}`
@@ -238,8 +250,9 @@ MACD Histogram: ${macd}
 SENTIMENT: Bull ${sentiment.bullPct}% / Bear ${sentiment.bearPct}%
 PATTERNS: ${patterns.length > 0 ? patterns.map((p: any) => `${p.nameVi}(${p.type}) tại index ${p.index}`).join(', ') : 'Không có'}
 
-Phân tích theo framework Wyckoff + Structure + Volume. GIỮ NHẤT QUÁN với cấu trúc thị trường.
-CHỈ đưa entry khi có ≥ 3 confluence rõ ràng. Nếu không → entries = [].
+Phân tích theo framework Wyckoff + Structure + Volume + Multi-TF. GIỮ NHẤT QUÁN với cấu trúc thị trường.
+Ưu tiên: HTF trend → Current TF structure → Volume confirmation → Pattern + Indicator confluence.
+CHỈ đưa entry khi có ≥ 3 confluence rõ ràng VÀ HTF đồng thuận. Nếu không → entries = [].
 Trả về JSON.`;
 
     const response = await fetch(
