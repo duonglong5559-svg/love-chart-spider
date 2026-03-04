@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, useCallback } from 'react';
-import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, CandlestickData, HistogramData, Time, LineData, IPriceLine } from 'lightweight-charts';
-import { Candle, PivotLevels, calculateEMA } from '@/lib/tradingData';
+import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, CandlestickData, HistogramData, Time, LineData, IPriceLine, SeriesMarker } from 'lightweight-charts';
+import { Candle, PivotLevels, calculateEMA, TrendLine, CandlePattern } from '@/lib/tradingData';
 
 interface AIValidatedLevel {
   price: number;
@@ -16,6 +16,8 @@ interface Props {
   buyZone?: number;
   sellZone?: number;
   aiLevels?: AIValidatedLevel[];
+  trendLines?: TrendLine[];
+  patterns?: CandlePattern[];
 }
 
 function candleToTimestamp(candle: Candle, index: number, totalCandles: number): Time {
@@ -23,19 +25,19 @@ function candleToTimestamp(candle: Candle, index: number, totalCandles: number):
   return baseTime as Time;
 }
 
-const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Props) => {
+const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels, trendLines, patterns }: Props) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const ema9SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const ema21SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const trendLineSeriesRef = useRef<ISeriesApi<'Line'>[]>([]);
   const priceLinesRef = useRef<IPriceLine[]>([]);
 
   const ema9 = useMemo(() => calculateEMA(candles, 9), [candles]);
   const ema21 = useMemo(() => calculateEMA(candles, 21), [candles]);
 
-  // Helper to clear all price lines
   const clearPriceLines = useCallback(() => {
     if (!candleSeriesRef.current) return;
     priceLinesRef.current.forEach(line => {
@@ -106,12 +108,13 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
       window.removeEventListener('resize', handleResize);
       chart.remove();
       chartRef.current = null;
+      trendLineSeriesRef.current = [];
     };
   }, []);
 
   // Update data
   useEffect(() => {
-    if (!candleSeriesRef.current || !volumeSeriesRef.current || !ema9SeriesRef.current || !ema21SeriesRef.current) return;
+    if (!candleSeriesRef.current || !volumeSeriesRef.current || !ema9SeriesRef.current || !ema21SeriesRef.current || !chartRef.current) return;
     if (candles.length === 0) return;
 
     const candleData: CandlestickData[] = candles.map((c, i) => ({
@@ -137,6 +140,68 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
     ema9SeriesRef.current.setData(ema9Data);
     ema21SeriesRef.current.setData(ema21Data);
 
+    // Pattern markers on candles
+    if (patterns && patterns.length > 0) {
+      const markers: SeriesMarker<Time>[] = patterns
+        .filter(p => p.index >= 0 && p.index < candles.length)
+        .map(p => ({
+          time: candleToTimestamp(candles[p.index], p.index, candles.length),
+          position: p.type === 'bearish' ? 'aboveBar' as const : 'belowBar' as const,
+          color: p.type === 'bullish' ? '#26c682' : p.type === 'bearish' ? '#ef5350' : '#ffcc00',
+          shape: p.type === 'bullish' ? 'arrowUp' as const : p.type === 'bearish' ? 'arrowDown' as const : 'circle' as const,
+          text: p.name,
+        }));
+      // Sort by time (required by lightweight-charts)
+      markers.sort((a, b) => (a.time as number) - (b.time as number));
+      candleSeriesRef.current.setMarkers(markers);
+    } else {
+      candleSeriesRef.current.setMarkers([]);
+    }
+
+    // Remove old trendline series
+    trendLineSeriesRef.current.forEach(s => {
+      try { chartRef.current?.removeSeries(s); } catch {}
+    });
+    trendLineSeriesRef.current = [];
+
+    // Draw trendlines as individual line series
+    if (trendLines && trendLines.length > 0 && candles.length > 0) {
+      trendLines.forEach(tl => {
+        if (tl.startIndex < 0 || tl.startIndex >= candles.length) return;
+        const endIdx = Math.min(tl.endIndex, candles.length - 1);
+        if (endIdx <= tl.startIndex) return;
+
+        // Create intermediate points for smooth diagonal line
+        const points: LineData[] = [];
+        const steps = endIdx - tl.startIndex;
+        const slope = (tl.endPrice - tl.startPrice) / steps;
+
+        for (let i = 0; i <= steps; i++) {
+          const idx = tl.startIndex + i;
+          if (idx >= candles.length) break;
+          points.push({
+            time: candleToTimestamp(candles[idx], idx, candles.length),
+            value: tl.startPrice + slope * i,
+          });
+        }
+
+        if (points.length >= 2) {
+          const color = tl.type === 'resistance' ? '#ef5350' :
+                        tl.type === 'support' ? '#26c682' : '#ffcc00';
+          const series = chartRef.current!.addLineSeries({
+            color,
+            lineWidth: 2,
+            lineStyle: tl.type === 'channel' ? 1 : 0, // dashed for channel
+            crosshairMarkerVisible: false,
+            lastValueVisible: false,
+            priceLineVisible: false,
+          });
+          series.setData(points);
+          trendLineSeriesRef.current.push(series);
+        }
+      });
+    }
+
     // Clear old price lines before adding new ones
     clearPriceLines();
 
@@ -154,8 +219,6 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
 
     // Pivot Point
     addLine({ price: pivots.pp, color: '#ffcc00', title: 'PP' });
-
-    // Only show key pivots (not duplicates)
     addLine({ price: pivots.r1, color: '#e05050', title: 'R1' });
     addLine({ price: pivots.r2, color: '#e83e3e', title: 'R2' });
     addLine({ price: pivots.r3, color: '#ff3333', title: 'R3' });
@@ -163,7 +226,7 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
     addLine({ price: pivots.s2, color: '#26c682', title: 'S2' });
     addLine({ price: pivots.s3, color: '#2ee68e', title: 'S3' });
 
-    // AI levels - deduplicate by price
+    // AI levels
     if (aiLevels && aiLevels.length > 0) {
       const seen = new Set<string>();
       aiLevels.forEach(level => {
@@ -180,7 +243,7 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
       });
     }
 
-    // Buy/Sell zones - only if different from pivots
+    // Buy/Sell zones
     if (buyZone && Math.abs(buyZone - pivots.s1) > 0.01) {
       addLine({ price: buyZone, color: '#00e676', lineWidth: 2, lineStyle: 1, title: 'BUY' });
     }
@@ -189,7 +252,7 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
     }
 
     chartRef.current?.timeScale().scrollToRealTime();
-  }, [candles, pivots, buyZone, sellZone, aiLevels, ema9, ema21, clearPriceLines]);
+  }, [candles, pivots, buyZone, sellZone, aiLevels, trendLines, patterns, ema9, ema21, clearPriceLines]);
 
   return (
     <div className="relative rounded-lg overflow-hidden border border-border bg-card shadow-[0_0_30px_rgba(0,200,230,0.05)]">
@@ -204,6 +267,12 @@ const TradingViewChart = ({ candles, pivots, buyZone, sellZone, aiLevels }: Prop
           <div className="w-4 h-0.5 rounded" style={{ background: '#ffcc00' }} />
           <span className="text-[10px] font-mono text-muted-foreground">EMA 21</span>
         </div>
+        {trendLines && trendLines.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <div className="w-4 h-0.5 rounded bg-bear" />
+            <span className="text-[10px] font-mono text-muted-foreground">Trend ({trendLines.length})</span>
+          </div>
+        )}
         {aiLevels && aiLevels.length > 0 && (
           <span className="text-[10px] font-mono text-primary font-bold animate-pulse">🧠 AI</span>
         )}

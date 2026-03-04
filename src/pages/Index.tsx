@@ -235,6 +235,8 @@ const Index = () => {
               buyZone={buyZone}
               sellZone={sellZone}
               aiLevels={aiAnalysis?.validatedLevels}
+              trendLines={trendLines}
+              patterns={patterns}
             />
           </div>
 
