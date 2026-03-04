@@ -441,86 +441,120 @@ export function calculateMACD(candles: Candle[]): { macd: number[]; signal: numb
 export function generateTrendLines(candles: Candle[]): TrendLine[] {
   const lines: TrendLine[] = [];
   const len = candles.length;
-  if (len < 10) return lines;
+  if (len < 15) return lines;
 
-  // Find swing highs (local maxima)
+  // Find swing highs and lows with adaptive lookback
+  const lookback = Math.max(2, Math.min(5, Math.floor(len / 15)));
   const swingHighs: { index: number; price: number }[] = [];
   const swingLows: { index: number; price: number }[] = [];
 
-  for (let i = 3; i < len - 3; i++) {
-    const isHigh = candles[i].high >= candles[i - 1].high && candles[i].high >= candles[i - 2].high &&
-                   candles[i].high >= candles[i + 1].high && candles[i].high >= candles[i + 2].high;
-    const isLow = candles[i].low <= candles[i - 1].low && candles[i].low <= candles[i - 2].low &&
-                  candles[i].low <= candles[i + 1].low && candles[i].low <= candles[i + 2].low;
-
+  for (let i = lookback; i < len - lookback; i++) {
+    let isHigh = true;
+    let isLow = true;
+    for (let j = 1; j <= lookback; j++) {
+      if (candles[i].high < candles[i - j].high || candles[i].high < candles[i + j].high) isHigh = false;
+      if (candles[i].low > candles[i - j].low || candles[i].low > candles[i + j].low) isLow = false;
+    }
     if (isHigh) swingHighs.push({ index: i, price: candles[i].high });
     if (isLow) swingLows.push({ index: i, price: candles[i].low });
   }
 
-  // Connect swing highs for resistance trend lines
-  for (let i = 0; i < swingHighs.length - 1 && lines.length < 4; i++) {
-    const a = swingHighs[i];
-    const b = swingHighs[i + 1];
-    if (b.index - a.index >= 5) {
-      // Extend the line to the end of the chart
-      const slope = (b.price - a.price) / (b.index - a.index);
-      const endIdx = Math.min(len - 1, b.index + 15);
-      const endPrice = b.price + slope * (endIdx - b.index);
-      lines.push({
-        startIndex: a.index,
-        endIndex: endIdx,
-        startPrice: a.price,
-        endPrice: endPrice,
-        type: 'resistance',
-        color: 'hsl(348, 80%, 55%)',
-      });
+  // Score a trendline by how many candles it "touches" (within tolerance)
+  const atr = calculateATR(candles);
+  const tolerance = atr * 0.3;
+
+  function scoreLine(startIdx: number, startPrice: number, endIdx: number, endPrice: number, useHigh: boolean): number {
+    const slope = (endPrice - startPrice) / (endIdx - startIdx);
+    let touches = 0;
+    for (let i = startIdx; i <= Math.min(endIdx + 10, len - 1); i++) {
+      const linePrice = startPrice + slope * (i - startIdx);
+      const candlePrice = useHigh ? candles[i].high : candles[i].low;
+      if (Math.abs(candlePrice - linePrice) < tolerance) touches++;
     }
+    return touches;
   }
 
-  // Connect swing lows for support trend lines
-  for (let i = 0; i < swingLows.length - 1 && lines.length < 8; i++) {
-    const a = swingLows[i];
-    const b = swingLows[i + 1];
-    if (b.index - a.index >= 5) {
-      const slope = (b.price - a.price) / (b.index - a.index);
-      const endIdx = Math.min(len - 1, b.index + 15);
-      const endPrice = b.price + slope * (endIdx - b.index);
-      lines.push({
-        startIndex: a.index,
-        endIndex: endIdx,
-        startPrice: a.price,
-        endPrice: endPrice,
-        type: 'support',
-        color: 'hsl(145, 80%, 45%)',
-      });
+  // Build resistance trendlines from swing highs (descending or ascending highs)
+  const bestResistance: { a: typeof swingHighs[0]; b: typeof swingHighs[0]; score: number }[] = [];
+  for (let i = 0; i < swingHighs.length - 1; i++) {
+    for (let j = i + 1; j < swingHighs.length; j++) {
+      const a = swingHighs[i], b = swingHighs[j];
+      if (b.index - a.index < 5) continue;
+      const score = scoreLine(a.index, a.price, b.index, b.price, true);
+      if (score >= 2) bestResistance.push({ a, b, score });
     }
   }
+  bestResistance.sort((x, y) => y.score - x.score);
 
-  // Add horizontal channel lines at key swing levels
-  if (swingHighs.length > 0) {
-    const topSwing = swingHighs.reduce((a, b) => b.price > a.price ? b : a);
+  // Build support trendlines from swing lows
+  const bestSupport: { a: typeof swingLows[0]; b: typeof swingLows[0]; score: number }[] = [];
+  for (let i = 0; i < swingLows.length - 1; i++) {
+    for (let j = i + 1; j < swingLows.length; j++) {
+      const a = swingLows[i], b = swingLows[j];
+      if (b.index - a.index < 5) continue;
+      const score = scoreLine(a.index, a.price, b.index, b.price, false);
+      if (score >= 2) bestSupport.push({ a, b, score });
+    }
+  }
+  bestSupport.sort((x, y) => y.score - x.score);
+
+  // Take top 2 resistance trendlines
+  const usedRes = new Set<string>();
+  for (const r of bestResistance) {
+    if (lines.filter(l => l.type === 'resistance').length >= 2) break;
+    const key = `${r.a.index}-${r.b.index}`;
+    if (usedRes.has(key)) continue;
+    usedRes.add(key);
+    const slope = (r.b.price - r.a.price) / (r.b.index - r.a.index);
+    const extendIdx = Math.min(len - 1, r.b.index + Math.floor((len - r.b.index) * 0.8));
     lines.push({
-      startIndex: topSwing.index,
-      endIndex: len - 1,
-      startPrice: topSwing.price,
-      endPrice: topSwing.price,
-      type: 'channel',
-      color: 'hsl(45, 90%, 55%)',
+      startIndex: r.a.index,
+      endIndex: extendIdx,
+      startPrice: r.a.price,
+      endPrice: r.a.price + slope * (extendIdx - r.a.index),
+      type: 'resistance',
+      color: '#ef5350',
+    });
+  }
+
+  // Take top 2 support trendlines
+  const usedSup = new Set<string>();
+  for (const s of bestSupport) {
+    if (lines.filter(l => l.type === 'support').length >= 2) break;
+    const key = `${s.a.index}-${s.b.index}`;
+    if (usedSup.has(key)) continue;
+    usedSup.add(key);
+    const slope = (s.b.price - s.a.price) / (s.b.index - s.a.index);
+    const extendIdx = Math.min(len - 1, s.b.index + Math.floor((len - s.b.index) * 0.8));
+    lines.push({
+      startIndex: s.a.index,
+      endIndex: extendIdx,
+      startPrice: s.a.price,
+      endPrice: s.a.price + slope * (extendIdx - s.a.index),
+      type: 'support',
+      color: '#26c682',
+    });
+  }
+
+  // Add horizontal channel at strongest high/low
+  if (swingHighs.length > 0) {
+    const top = swingHighs.reduce((a, b) => b.price > a.price ? b : a);
+    lines.push({
+      startIndex: top.index, endIndex: len - 1,
+      startPrice: top.price, endPrice: top.price,
+      type: 'channel', color: '#ffcc00',
     });
   }
   if (swingLows.length > 0) {
-    const bottomSwing = swingLows.reduce((a, b) => b.price < a.price ? b : a);
+    const bottom = swingLows.reduce((a, b) => b.price < a.price ? b : a);
     lines.push({
-      startIndex: bottomSwing.index,
-      endIndex: len - 1,
-      startPrice: bottomSwing.price,
-      endPrice: bottomSwing.price,
-      type: 'channel',
-      color: 'hsl(45, 90%, 55%)',
+      startIndex: bottom.index, endIndex: len - 1,
+      startPrice: bottom.price, endPrice: bottom.price,
+      type: 'channel', color: '#ffcc00',
     });
   }
 
-  return lines.slice(0, 10);
+  return lines;
 }
 
 export function getSentiment(candles: Candle[]): { bullPct: number; bearPct: number } {
