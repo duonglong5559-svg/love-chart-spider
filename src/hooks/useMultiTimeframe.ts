@@ -81,7 +81,7 @@ export function useMultiTimeframe(symbol: string, currentTimeframe: string) {
       const results = await Promise.all(
         higherTFs.map(async (tf) => {
           const res = await fetch(
-            `${BINANCE_REST}/klines?symbol=${symbol.toUpperCase()}&interval=${tf}&limit=50`
+            `${BINANCE_REST}/klines?symbol=${symbol.toUpperCase()}&interval=${tf}&limit=500`
           );
           if (!res.ok) return null;
           const data = await res.json();
