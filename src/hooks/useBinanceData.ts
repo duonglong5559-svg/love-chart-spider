@@ -55,7 +55,7 @@ export function useBinanceData(symbol: string, timeframe: string, onCandleClose?
     setError(null);
     try {
       const res = await fetch(
-        `${BINANCE_REST}/klines?symbol=${symbol.toUpperCase()}&interval=${binanceInterval}&limit=80`
+        `${BINANCE_REST}/klines?symbol=${symbol.toUpperCase()}&interval=${binanceInterval}&limit=500`
       );
       if (!res.ok) throw new Error(`Binance API error: ${res.status}`);
       const data: BinanceKline[] = await res.json();
