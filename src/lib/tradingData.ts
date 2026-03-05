@@ -441,14 +441,20 @@ export function calculateMACD(candles: Candle[]): { macd: number[]; signal: numb
 export function generateTrendLines(candles: Candle[]): TrendLine[] {
   const lines: TrendLine[] = [];
   const len = candles.length;
-  if (len < 15) return lines;
+  if (len < 20) return lines;
 
-  // Find swing highs and lows with adaptive lookback
-  const lookback = Math.max(2, Math.min(5, Math.floor(len / 15)));
+  const atr = calculateATR(candles);
+  
+  // Adaptive lookback based on data size - larger datasets need bigger lookback to find significant swings
+  const lookback = Math.max(3, Math.min(10, Math.floor(len / 40)));
+  
+  // Only scan the recent portion for swing detection (last 80% of data)
+  const scanStart = Math.max(lookback, Math.floor(len * 0.2));
+  
   const swingHighs: { index: number; price: number }[] = [];
   const swingLows: { index: number; price: number }[] = [];
 
-  for (let i = lookback; i < len - lookback; i++) {
+  for (let i = scanStart; i < len - lookback; i++) {
     let isHigh = true;
     let isLow = true;
     for (let j = 1; j <= lookback; j++) {
@@ -459,100 +465,146 @@ export function generateTrendLines(candles: Candle[]): TrendLine[] {
     if (isLow) swingLows.push({ index: i, price: candles[i].low });
   }
 
-  // Score a trendline by how many candles it "touches" (within tolerance)
-  const atr = calculateATR(candles);
-  const tolerance = atr * 0.3;
+  // Filter swings: keep only significant ones (price difference > 0.5 ATR from neighbors)
+  function filterSignificantSwings(swings: { index: number; price: number }[], isHigh: boolean): typeof swings {
+    if (swings.length <= 3) return swings;
+    const minIndexGap = Math.max(5, Math.floor(len / 50));
+    const filtered: typeof swings = [];
+    for (const s of swings) {
+      const tooClose = filtered.some(f => 
+        Math.abs(f.index - s.index) < minIndexGap && Math.abs(f.price - s.price) < atr * 0.3
+      );
+      if (!tooClose) filtered.push(s);
+    }
+    return filtered;
+  }
 
-  function scoreLine(startIdx: number, startPrice: number, endIdx: number, endPrice: number, useHigh: boolean): number {
+  const filteredHighs = filterSignificantSwings(swingHighs, true);
+  const filteredLows = filterSignificantSwings(swingLows, false);
+
+  // Score a trendline: count touches across the FULL line extent including projection to current candle
+  const tolerance = atr * 0.25;
+  const minGap = Math.max(10, Math.floor(len / 25)); // Minimum candle gap between two anchor points
+
+  function scoreLine(startIdx: number, startPrice: number, endIdx: number, endPrice: number, useHigh: boolean): { touches: number; recentTouch: boolean } {
     const slope = (endPrice - startPrice) / (endIdx - startIdx);
     let touches = 0;
-    for (let i = startIdx; i <= Math.min(endIdx + 10, len - 1); i++) {
+    let recentTouch = false;
+    const recentThreshold = len - Math.floor(len * 0.15); // last 15% of candles
+    
+    // Score from start to the end of the data (project the line forward)
+    for (let i = startIdx; i < len; i++) {
       const linePrice = startPrice + slope * (i - startIdx);
       const candlePrice = useHigh ? candles[i].high : candles[i].low;
-      if (Math.abs(candlePrice - linePrice) < tolerance) touches++;
+      // Also check if the line passes through the candle body
+      const candleHigh = candles[i].high;
+      const candleLow = candles[i].low;
+      
+      if (Math.abs(candlePrice - linePrice) < tolerance || 
+          (linePrice >= candleLow - tolerance * 0.5 && linePrice <= candleHigh + tolerance * 0.5)) {
+        touches++;
+        if (i >= recentThreshold) recentTouch = true;
+      }
     }
-    return touches;
+    return { touches, recentTouch };
   }
 
-  // Build resistance trendlines from swing highs (descending or ascending highs)
-  const bestResistance: { a: typeof swingHighs[0]; b: typeof swingHighs[0]; score: number }[] = [];
-  for (let i = 0; i < swingHighs.length - 1; i++) {
-    for (let j = i + 1; j < swingHighs.length; j++) {
-      const a = swingHighs[i], b = swingHighs[j];
-      if (b.index - a.index < 5) continue;
-      const score = scoreLine(a.index, a.price, b.index, b.price, true);
-      if (score >= 2) bestResistance.push({ a, b, score });
+  // Build and score resistance trendlines
+  type ScoredLine = { a: { index: number; price: number }; b: { index: number; price: number }; score: number; recentTouch: boolean };
+  
+  const bestResistance: ScoredLine[] = [];
+  for (let i = 0; i < filteredHighs.length - 1; i++) {
+    for (let j = i + 1; j < filteredHighs.length; j++) {
+      const a = filteredHighs[i], b = filteredHighs[j];
+      if (b.index - a.index < minGap) continue;
+      const { touches, recentTouch } = scoreLine(a.index, a.price, b.index, b.price, true);
+      if (touches >= 3) bestResistance.push({ a, b, score: touches, recentTouch });
     }
   }
-  bestResistance.sort((x, y) => y.score - x.score);
+  // Prioritize: lines with recent touches first, then by score
+  bestResistance.sort((x, y) => {
+    if (x.recentTouch !== y.recentTouch) return x.recentTouch ? -1 : 1;
+    return y.score - x.score;
+  });
 
-  // Build support trendlines from swing lows
-  const bestSupport: { a: typeof swingLows[0]; b: typeof swingLows[0]; score: number }[] = [];
-  for (let i = 0; i < swingLows.length - 1; i++) {
-    for (let j = i + 1; j < swingLows.length; j++) {
-      const a = swingLows[i], b = swingLows[j];
-      if (b.index - a.index < 5) continue;
-      const score = scoreLine(a.index, a.price, b.index, b.price, false);
-      if (score >= 2) bestSupport.push({ a, b, score });
+  // Build and score support trendlines
+  const bestSupport: ScoredLine[] = [];
+  for (let i = 0; i < filteredLows.length - 1; i++) {
+    for (let j = i + 1; j < filteredLows.length; j++) {
+      const a = filteredLows[i], b = filteredLows[j];
+      if (b.index - a.index < minGap) continue;
+      const { touches, recentTouch } = scoreLine(a.index, a.price, b.index, b.price, false);
+      if (touches >= 3) bestSupport.push({ a, b, score: touches, recentTouch });
     }
   }
-  bestSupport.sort((x, y) => y.score - x.score);
+  bestSupport.sort((x, y) => {
+    if (x.recentTouch !== y.recentTouch) return x.recentTouch ? -1 : 1;
+    return y.score - x.score;
+  });
 
-  // Take top 2 resistance trendlines
-  const usedRes = new Set<string>();
+  // Helper: check if a new line is too similar to existing ones
+  function isSimilarLine(newLine: TrendLine, existing: TrendLine[]): boolean {
+    for (const ex of existing) {
+      const slopeDiff = Math.abs(
+        (newLine.endPrice - newLine.startPrice) / (newLine.endIndex - newLine.startIndex) -
+        (ex.endPrice - ex.startPrice) / (ex.endIndex - ex.startIndex)
+      );
+      const priceDiff = Math.abs(newLine.startPrice - ex.startPrice);
+      if (slopeDiff < atr * 0.01 && priceDiff < atr * 0.5) return true;
+    }
+    return false;
+  }
+
+  // Take top 2 resistance trendlines (non-overlapping), extend to current candle
   for (const r of bestResistance) {
     if (lines.filter(l => l.type === 'resistance').length >= 2) break;
-    const key = `${r.a.index}-${r.b.index}`;
-    if (usedRes.has(key)) continue;
-    usedRes.add(key);
     const slope = (r.b.price - r.a.price) / (r.b.index - r.a.index);
-    const extendIdx = Math.min(len - 1, r.b.index + Math.floor((len - r.b.index) * 0.8));
-    lines.push({
+    const extendIdx = len - 1;
+    const newLine: TrendLine = {
       startIndex: r.a.index,
       endIndex: extendIdx,
       startPrice: r.a.price,
       endPrice: r.a.price + slope * (extendIdx - r.a.index),
       type: 'resistance',
       color: '#ef5350',
-    });
+    };
+    if (!isSimilarLine(newLine, lines)) lines.push(newLine);
   }
 
   // Take top 2 support trendlines
-  const usedSup = new Set<string>();
   for (const s of bestSupport) {
     if (lines.filter(l => l.type === 'support').length >= 2) break;
-    const key = `${s.a.index}-${s.b.index}`;
-    if (usedSup.has(key)) continue;
-    usedSup.add(key);
     const slope = (s.b.price - s.a.price) / (s.b.index - s.a.index);
-    const extendIdx = Math.min(len - 1, s.b.index + Math.floor((len - s.b.index) * 0.8));
-    lines.push({
+    const extendIdx = len - 1;
+    const newLine: TrendLine = {
       startIndex: s.a.index,
       endIndex: extendIdx,
       startPrice: s.a.price,
       endPrice: s.a.price + slope * (extendIdx - s.a.index),
       type: 'support',
       color: '#26c682',
-    });
+    };
+    if (!isSimilarLine(newLine, lines)) lines.push(newLine);
   }
 
-  // Add horizontal channel at strongest high/low
-  if (swingHighs.length > 0) {
-    const top = swingHighs.reduce((a, b) => b.price > a.price ? b : a);
-    lines.push({
-      startIndex: top.index, endIndex: len - 1,
-      startPrice: top.price, endPrice: top.price,
-      type: 'channel', color: '#ffcc00',
-    });
-  }
-  if (swingLows.length > 0) {
-    const bottom = swingLows.reduce((a, b) => b.price < a.price ? b : a);
-    lines.push({
-      startIndex: bottom.index, endIndex: len - 1,
-      startPrice: bottom.price, endPrice: bottom.price,
-      type: 'channel', color: '#ffcc00',
-    });
-  }
+  // Horizontal channels: recent range high/low (last 30% of candles)
+  const recentStart = Math.floor(len * 0.7);
+  const recentCandles = candles.slice(recentStart);
+  const recentHigh = Math.max(...recentCandles.map(c => c.high));
+  const recentLow = Math.min(...recentCandles.map(c => c.low));
+  const recentHighIdx = recentStart + recentCandles.findIndex(c => c.high === recentHigh);
+  const recentLowIdx = recentStart + recentCandles.findIndex(c => c.low === recentLow);
+
+  lines.push({
+    startIndex: recentHighIdx, endIndex: len - 1,
+    startPrice: recentHigh, endPrice: recentHigh,
+    type: 'channel', color: '#ffcc00',
+  });
+  lines.push({
+    startIndex: recentLowIdx, endIndex: len - 1,
+    startPrice: recentLow, endPrice: recentLow,
+    type: 'channel', color: '#ffcc00',
+  });
 
   return lines;
 }
