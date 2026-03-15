@@ -4,6 +4,7 @@ import PipelineChart from '@/components/trading/PipelineChart';
 import BiasBar from '@/components/trading/BiasBar';
 import TimeframeCards from '@/components/trading/TimeframeCards';
 import SignalDisplay from '@/components/trading/SignalDisplay';
+import MarketOverview from '@/components/trading/MarketOverview';
 import NewsPanel from '@/components/trading/NewsPanel';
 import {
   Activity, Wifi, WifiOff, Loader2, TrendingUp, Target, BarChart3,
@@ -250,6 +251,17 @@ const Index = () => {
                     structureState={structureState}
                     patterns={uiPayload?.patterns || []}
                     currentPrice={currentPrice}
+                  />
+
+                  {/* Market Overview with price levels */}
+                  <MarketOverview
+                    currentPrice={currentPrice}
+                    pivots={pivotLevels}
+                    direction={globalBias.direction}
+                    entryLong={signalData.entryLong}
+                    entryShort={signalData.entryShort}
+                    target={signalData.target}
+                    stopLoss={signalData.stopLoss}
                   />
 
                   {/* Pivot Table Mini */}
