@@ -1,179 +1,167 @@
 import { useState, useMemo, useCallback } from 'react';
-import { calculatePivots, detectPatterns, generateSignals, generateAlerts, calculateRSI, calculateMACD, generateTrendLines, getSentiment, getPivotAnalysis } from '@/lib/tradingData';
-import { type AIAnalysis } from '@/components/trading/AISignalPanel';
-import { useBinanceData } from '@/hooks/useBinanceData';
-import { useMultiTimeframe } from '@/hooks/useMultiTimeframe';
-import TradingViewChart from '@/components/trading/TradingViewChart';
-import PriceTicker from '@/components/trading/PriceTicker';
-import PivotTable from '@/components/trading/PivotTable';
-import PatternPanel from '@/components/trading/PatternPanel';
-import SignalPanel from '@/components/trading/SignalPanel';
-import VolumeChart from '@/components/trading/VolumeChart';
-import SentimentBar from '@/components/trading/SentimentBar';
-import AlertCards from '@/components/trading/AlertCards';
-import RSIChart from '@/components/trading/RSIChart';
-import MACDChart from '@/components/trading/MACDChart';
-import AIChatPanel from '@/components/trading/AIChatPanel';
-import AISignalPanel from '@/components/trading/AISignalPanel';
+import { useBinanceFutures } from '@/hooks/useBinanceFutures';
+import PipelineChart from '@/components/trading/PipelineChart';
+import BiasBar from '@/components/trading/BiasBar';
+import TimeframeCards from '@/components/trading/TimeframeCards';
+import SignalDisplay from '@/components/trading/SignalDisplay';
 import NewsPanel from '@/components/trading/NewsPanel';
-import ConfluenceScoring from '@/components/trading/ConfluenceScoring';
-import MultiTFPanel from '@/components/trading/MultiTFPanel';
-import { Activity, Wifi, WifiOff, Loader2, TrendingUp, Target, BarChart3, Bot, Brain, Newspaper, Sparkles, Layers } from 'lucide-react';
+import {
+  Activity, Wifi, WifiOff, Loader2, TrendingUp, Target, BarChart3,
+  Newspaper, Sparkles, Layers, Shield, Zap, ChevronDown,
+} from 'lucide-react';
+import type { Candle as EngineCandle, PatternSignal, Trendline } from '@/engine/types';
+import { getPipelineState } from '@/engine/pipeline';
 
 const SYMBOLS = [
   { value: 'BTCUSDT', label: 'BTC', icon: '₿' },
   { value: 'ETHUSDT', label: 'ETH', icon: 'Ξ' },
-  { value: 'PAXGUSDT', label: 'XAU', icon: '🥇' },
   { value: 'BNBUSDT', label: 'BNB', icon: '◆' },
   { value: 'SOLUSDT', label: 'SOL', icon: '◎' },
   { value: 'XRPUSDT', label: 'XRP', icon: '✕' },
   { value: 'DOGEUSDT', label: 'DOGE', icon: '🐕' },
 ];
 
-type TabKey = 'signals' | 'analysis' | 'trends' | 'indicators' | 'news' | 'ai' | 'mtf';
+type TabKey = 'live' | 'analysis' | 'news';
 
 const Index = () => {
   const [symbol, setSymbol] = useState('BTCUSDT');
-  const [timeframe, setTimeframe] = useState('M5');
-  const [activeTab, setActiveTab] = useState<TabKey>('signals');
-  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
+  const [activeTab, setActiveTab] = useState<TabKey>('live');
 
-  const { candles, loading, error, connected, candleCloseCount } = useBinanceData(symbol, timeframe);
-  const { analysis: multiTFAnalysis, loading: mtfLoading } = useMultiTimeframe(symbol, timeframe);
+  const {
+    uiPayload,
+    loading,
+    error,
+    connected,
+    currentPrice,
+    candleCloseCount,
+    allCandles,
+    activeTimeframe,
+    setActiveTimeframe,
+  } = useBinanceFutures(symbol);
 
-  const pivots = useMemo(() => candles.length > 0 ? calculatePivots(candles) : null, [candles]);
-  const patterns = useMemo(() => detectPatterns(candles), [candles]);
-  const signals = useMemo(() => pivots ? generateSignals(candles, pivots) : [], [candles, pivots]);
-  const alerts = useMemo(() => pivots ? generateAlerts(candles, pivots, patterns) : [], [candles, pivots, patterns]);
-  const rsiData = useMemo(() => calculateRSI(candles), [candles]);
-  const macdData = useMemo(() => calculateMACD(candles), [candles]);
-  const trendLines = useMemo(() => generateTrendLines(candles), [candles]);
-  const sentiment = useMemo(() => getSentiment(candles), [candles]);
-  const pivotAnalysis = useMemo(() => pivots && candles.length > 0 ? getPivotAnalysis(candles[candles.length - 1].close, pivots) : '', [candles, pivots]);
+  const chartCandles: EngineCandle[] = useMemo(() => {
+    return allCandles[activeTimeframe] || [];
+  }, [allCandles, activeTimeframe]);
 
-  const buyZone = pivots?.s1;
-  const sellZone = pivots?.r1;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const pipelineState = useMemo(() => getPipelineState(symbol), [symbol, uiPayload]);
 
-  const handleAIAnalysisUpdate = useCallback((analysis: AIAnalysis | null) => {
-    setAiAnalysis(analysis);
-  }, []);
+  const activeAnalysis = useMemo(() => {
+    if (!pipelineState) return null;
+    return pipelineState.analyses.get(activeTimeframe) || null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelineState, activeTimeframe, uiPayload]);
 
-  const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1', '1M'];
+  const trendlines: Trendline[] = useMemo(() => {
+    return activeAnalysis?.trendlines || [];
+  }, [activeAnalysis]);
 
-  const tabs: { key: TabKey; label: string; icon: React.ReactNode; count?: number }[] = [
-    { key: 'signals', label: 'AI Signals', icon: <Brain className="w-3.5 h-3.5" /> },
-    { key: 'analysis', label: 'Phân tích', icon: <TrendingUp className="w-3.5 h-3.5" /> },
-    { key: 'mtf', label: 'Đa khung TG', icon: <Layers className="w-3.5 h-3.5" />, count: multiTFAnalysis?.timeframes?.length },
-    { key: 'trends', label: 'Xu hướng', icon: <Target className="w-3.5 h-3.5" />, count: aiAnalysis?.aiTrendLines?.length || trendLines.length },
-    { key: 'indicators', label: 'Chỉ báo', icon: <BarChart3 className="w-3.5 h-3.5" /> },
-    { key: 'news', label: 'Tin tức', icon: <Newspaper className="w-3.5 h-3.5" /> },
-    { key: 'ai', label: 'Chat AI', icon: <Bot className="w-3.5 h-3.5" /> },
-  ];
+  const patterns: PatternSignal[] = useMemo(() => {
+    return activeAnalysis?.patternSignals || [];
+  }, [activeAnalysis]);
 
-  const currentPrice = candles.length > 0 ? candles[candles.length - 1].close : 0;
-  const prevPrice = candles.length > 1 ? candles[candles.length - 2].close : currentPrice;
+  const prevPrice = chartCandles.length > 1 ? chartCandles[chartCandles.length - 2].close : currentPrice;
   const priceChange = currentPrice - prevPrice;
   const priceChangePct = prevPrice > 0 ? (priceChange / prevPrice) * 100 : 0;
   const isBullish = priceChange >= 0;
 
+  const symbolInfo = SYMBOLS.find(s => s.value === symbol);
+
+  const globalBias = uiPayload?.globalBias || { long: 50, short: 50, direction: 'neutral' as const };
+  const pivotLevels = uiPayload?.pivotLevels || { pp: 0, r1: 0, r2: 0, r3: 0, s1: 0, s2: 0, s3: 0 };
+  const signalData = uiPayload?.signal || {
+    summary: 'Đang khởi tạo pipeline phân tích...', status: 'IDLE' as const, direction: 'neutral' as const,
+  };
+  const structureState = uiPayload?.structureState || 'range';
+  const tfData = uiPayload?.timeframes || {};
+
+  const tabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+    { key: 'live', label: 'Tín hiệu Live', icon: <Zap className="w-3.5 h-3.5" /> },
+    { key: 'analysis', label: 'Phân tích', icon: <Layers className="w-3.5 h-3.5" /> },
+    { key: 'news', label: 'Tin tức', icon: <Newspaper className="w-3.5 h-3.5" /> },
+  ];
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* Top Bar - Glass effect */}
-      <header className="sticky top-0 z-50 border-b border-border/50 px-4 py-2.5 backdrop-blur-xl bg-background/80">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center border border-primary/20 group-hover:shadow-[0_0_20px_hsl(187,100%,45%,0.3)] transition-all duration-500">
-              <Activity className="w-4 h-4 text-primary" />
+    <div className="min-h-screen bg-[#0a0e14] text-white">
+      {/* ─── Header ─── */}
+      <header className="sticky top-0 z-50 border-b border-white/5 px-3 py-2 backdrop-blur-xl bg-[#0a0e14]/90">
+        <div className="flex items-center gap-2.5">
+          {/* Logo */}
+          <div className="flex items-center gap-2 group">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500/20 to-cyan-500/5 flex items-center justify-center border border-cyan-500/15 group-hover:shadow-[0_0_15px_rgba(0,200,230,0.25)] transition-all duration-500">
+              <Activity className="w-3.5 h-3.5 text-cyan-400" />
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">Spider</span>
-              <span className="text-sm font-bold text-foreground/80">Analysis</span>
-              <Sparkles className="w-3 h-3 text-primary/50 animate-pulse" />
+            <div className="flex items-center gap-1">
+              <span className="text-xs font-bold bg-gradient-to-r from-cyan-400 to-cyan-300 bg-clip-text text-transparent">Spider</span>
+              <span className="text-xs font-bold text-white/60">Analysis</span>
             </div>
           </div>
 
-          {/* AI Bias indicator with glow */}
-          {aiAnalysis?.marketStructure ? (
-            <div className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all duration-500 ${
-              aiAnalysis.marketStructure.bias === 'LONG' 
-                ? 'bg-bull/10 text-bull border border-bull/20 shadow-[0_0_15px_hsl(145,100%,45%,0.15)]' 
-                : aiAnalysis.marketStructure.bias === 'SHORT' 
-                  ? 'bg-bear/10 text-bear border border-bear/20 shadow-[0_0_15px_hsl(348,100%,55%,0.15)]' 
-                  : 'bg-secondary text-pivot border border-pivot/20'
-            }`}>
-              AI: {aiAnalysis.marketStructure.bias === 'LONG' ? '🟢 LONG' :
-                aiAnalysis.marketStructure.bias === 'SHORT' ? '🔴 SHORT' : '⏳ NEUTRAL'}
-            </div>
-          ) : (
-            <div className={`px-3 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all duration-500 ${
-              isBullish
-                ? 'bg-bull/10 text-bull border border-bull/20'
-                : 'bg-bear/10 text-bear border border-bear/20'
-            }`}>
-              {isBullish ? '🟢 LONG' : '🔴 SHORT'}
-            </div>
-          )}
+          {/* Direction Badge */}
+          <div className={`px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wide border transition-all duration-500 ${
+            globalBias.direction === 'long'
+              ? 'bg-green-500/10 text-green-400 border-green-500/20 shadow-[0_0_10px_rgba(0,230,118,0.1)]'
+              : globalBias.direction === 'short'
+                ? 'bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(255,23,68,0.1)]'
+                : 'bg-white/5 text-white/40 border-white/10'
+          }`}>
+            {globalBias.direction === 'long' ? 'Lệnh Chờ Long' :
+             globalBias.direction === 'short' ? 'Lệnh Chờ Short' : 'Chờ tín hiệu'}
+          </div>
 
-          {/* Price display */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-card/80 border border-border/50">
-            <span className="text-lg">{SYMBOLS.find(s => s.value === symbol)?.icon}</span>
-            <span className="text-xs font-bold font-mono text-foreground">{SYMBOLS.find(s => s.value === symbol)?.label}/USDT</span>
-            {candles.length > 0 && (
-              <>
-                <span className={`text-sm font-bold font-mono ${isBullish ? 'text-bull' : 'text-bear'}`}>
-                  {currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-                <span className={`text-[10px] font-mono ${isBullish ? 'text-bull' : 'text-bear'}`}>
-                  {isBullish ? '+' : ''}{priceChangePct.toFixed(2)}%
-                </span>
-              </>
+          {/* Symbol + Price */}
+          <div className="flex items-center gap-1.5 ml-auto">
+            <span className="text-[10px] font-mono text-white/40">{symbolInfo?.label}/USDT</span>
+            {currentPrice > 0 && (
+              <span className={`text-sm font-bold font-mono ${isBullish ? 'text-green-400' : 'text-red-400'}`}>
+                {currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
             )}
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
+          {/* Connection */}
+          <div className="flex items-center gap-1">
             {connected ? (
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-bull/5 border border-bull/10">
-                <Wifi className="w-3 h-3 text-bull" />
-                <span className="w-1.5 h-1.5 rounded-full bg-bull animate-pulse" />
-                <span className="text-[10px] text-bull font-mono font-bold">LIVE</span>
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-500/5 border border-green-500/10">
+                <Wifi className="w-2.5 h-2.5 text-green-400" />
+                <span className="w-1 h-1 rounded-full bg-green-400 animate-pulse" />
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-bear/5 border border-bear/10">
-                <WifiOff className="w-3 h-3 text-bear" />
-                <span className="text-[10px] text-bear font-mono">OFFLINE</span>
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-500/5 border border-red-500/10">
+                <WifiOff className="w-2.5 h-2.5 text-red-400" />
               </div>
             )}
           </div>
         </div>
       </header>
 
-      {/* Sentiment Bar */}
-      {candles.length > 0 && (
-        <div className="px-4 py-2 border-b border-border/50 bg-card/30">
-          <SentimentBar bullPct={sentiment.bullPct} bearPct={sentiment.bearPct} />
-        </div>
-      )}
+      {/* ─── Bias Bar ─── */}
+      <div className="px-3 py-2 border-b border-white/5 bg-[#0c1018]">
+        <BiasBar longPct={globalBias.long} shortPct={globalBias.short} direction={globalBias.direction} />
+      </div>
 
-      {/* Timeframe + Symbol Selector */}
-      <div className="px-4 py-2.5 border-b border-border/50 flex flex-wrap gap-2.5 bg-card/20">
-        <div className="flex items-center gap-0.5 bg-card/80 border border-border/50 rounded-lg p-1 overflow-x-auto backdrop-blur-sm">
-          {timeframes.map(tf => (
-            <button key={tf} onClick={() => setTimeframe(tf)}
-              className={`px-3 py-1.5 text-[11px] font-mono rounded-md transition-all duration-300 whitespace-nowrap ${
-                tf === timeframe 
-                  ? 'bg-primary text-primary-foreground shadow-[0_0_12px_hsl(187,100%,45%,0.3)] font-bold' 
-                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
-              }`}>{tf}</button>
-          ))}
-        </div>
-        <div className="flex items-center gap-0.5 bg-card/80 border border-border/50 rounded-lg p-1 overflow-x-auto backdrop-blur-sm">
+      {/* ─── Timeframe Cards ─── */}
+      <div className="px-3 py-2 border-b border-white/5 bg-[#0b0f16]">
+        <TimeframeCards
+          timeframes={tfData}
+          activeTimeframe={activeTimeframe}
+          onTimeframeClick={setActiveTimeframe}
+        />
+      </div>
+
+      {/* ─── Symbol Selector ─── */}
+      <div className="px-3 py-1.5 border-b border-white/5 bg-[#0b0f16]">
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
           {SYMBOLS.map(s => (
-            <button key={s.value} onClick={() => setSymbol(s.value)}
-              className={`flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-mono rounded-md transition-all duration-300 whitespace-nowrap ${
-                s.value === symbol 
-                  ? 'bg-primary/20 text-primary border border-primary/30 font-bold' 
-                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
-              }`}>
+            <button
+              key={s.value}
+              onClick={() => setSymbol(s.value)}
+              className={`flex items-center gap-1 px-2 py-1 text-[10px] font-mono rounded-md transition-all duration-300 whitespace-nowrap ${
+                s.value === symbol
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-bold'
+                  : 'text-white/30 hover:text-white/60 hover:bg-white/5'
+              }`}
+            >
               <span>{s.icon}</span>
               <span>{s.label}</span>
             </button>
@@ -181,211 +169,188 @@ const Index = () => {
         </div>
       </div>
 
+      {/* ─── Error ─── */}
       {error && (
-        <div className="mx-4 mt-3 bg-bear/10 border border-bear/20 rounded-lg p-3 backdrop-blur-sm animate-fade-in">
-          <p className="text-xs text-bear">{error}</p>
+        <div className="mx-3 mt-2 bg-red-500/10 border border-red-500/20 rounded-lg p-2.5">
+          <p className="text-[11px] text-red-400">{error}</p>
         </div>
       )}
 
-      {loading && candles.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-96 gap-4">
+      {/* ─── Loading ─── */}
+      {loading && chartCandles.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-80 gap-3">
           <div className="relative">
-            <Loader2 className="w-10 h-10 text-primary animate-spin" />
-            <div className="absolute inset-0 w-10 h-10 rounded-full bg-primary/10 animate-ping" />
+            <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+            <div className="absolute inset-0 w-8 h-8 rounded-full bg-cyan-400/10 animate-ping" />
           </div>
-          <span className="text-sm text-muted-foreground font-mono">Đang tải dữ liệu từ Binance...</span>
+          <span className="text-xs text-white/30 font-mono">Đang tải từ Binance Futures...</span>
+          <span className="text-[10px] text-white/20 font-mono">Phân tích {Object.keys(allCandles).length}/9 khung thời gian</span>
         </div>
-      ) : candles.length > 0 && pivots ? (
+      ) : (
         <>
-          {/* Ticker Banner */}
-          <div className="px-4 py-2 border-b border-border/50 overflow-hidden relative bg-gradient-to-r from-card/50 via-transparent to-card/50">
+          {/* ─── Chart ─── */}
+          <div className="px-2 pt-2">
+            <PipelineChart
+              candles={chartCandles}
+              pivots={pivotLevels}
+              entryLong={signalData.entryLong}
+              entryShort={signalData.entryShort}
+              target={signalData.target}
+              stopLoss={signalData.stopLoss}
+              trendlines={trendlines}
+              patterns={patterns}
+            />
+          </div>
+
+          {/* ─── Live Ticker ─── */}
+          <div className="px-3 py-1.5 border-t border-white/5 overflow-hidden">
             <div className="flex items-center gap-2">
-              <span className="flex-shrink-0 px-2 py-0.5 rounded-md bg-primary/20 text-primary text-[10px] font-bold border border-primary/20">
+              <span className="flex-shrink-0 px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 text-[9px] font-bold border border-cyan-500/10">
                 <span className="animate-pulse">●</span> LIVE
               </span>
               <div className="overflow-hidden flex-1">
-                <p className="text-xs text-muted-foreground whitespace-nowrap animate-ticker">
-                  <span className="font-mono text-foreground">📊 Giá: {currentPrice.toLocaleString()}</span>
+                <p className="text-[10px] text-white/30 whitespace-nowrap animate-ticker font-mono">
+                  {signalData.summary}
                   {'  •  '}
-                  <span className="text-pivot">{pivotAnalysis}</span>
+                  <span className="text-cyan-400/60">Đường xu hướng ({uiPayload?.trendlineCount || 0})</span>
                   {'  •  '}
-                  <span className="text-bull">RSI: {rsiData[rsiData.length - 1]?.toFixed(1)}</span>
-                  {'  •  '}
-                  <span className={macdData.histogram[macdData.histogram.length - 1] >= 0 ? 'text-bull' : 'text-bear'}>
-                    MACD: {macdData.histogram[macdData.histogram.length - 1]?.toFixed(2)}
-                  </span>
-                  {'  •  '}
-                  {aiAnalysis && (
-                    <>
-                      <span className="text-primary font-bold">🧠 AI: {aiAnalysis.trend} ({aiAnalysis.trendStrength}/10)</span>
-                      {'  •  '}
-                    </>
-                  )}
-                  <span className="text-foreground">Sentiment: {sentiment.bullPct}% Bull / {sentiment.bearPct}% Bear</span>
+                  <span className="text-white/40">Cấu trúc: {structureState}</span>
                 </p>
               </div>
             </div>
           </div>
 
-          {/* TradingView Chart */}
-          <div className="px-3 pt-3">
-            <TradingViewChart
-              candles={candles}
-              pivots={pivots}
-              buyZone={buyZone}
-              sellZone={sellZone}
-              aiLevels={aiAnalysis?.validatedLevels}
-              trendLines={trendLines}
-              patterns={patterns}
-            />
-          </div>
-
-          {/* Bottom Tabs */}
-          <div className="border-t border-border/50 mt-2">
-            <div className="flex overflow-x-auto bg-card/30 backdrop-blur-sm">
+          {/* ─── Tabs ─── */}
+          <div className="border-t border-white/5">
+            <div className="flex bg-[#0b0f16]">
               {tabs.map(tab => (
-                <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                  className={`relative flex items-center gap-1.5 px-4 py-3 text-xs font-medium whitespace-nowrap transition-all duration-300 ${
-                    activeTab === tab.key 
-                      ? 'text-primary bg-card/60' 
-                      : 'text-muted-foreground hover:text-foreground hover:bg-card/30'
-                  }`}>
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`relative flex items-center gap-1.5 px-4 py-2.5 text-[11px] font-medium whitespace-nowrap transition-all duration-300 ${
+                    activeTab === tab.key
+                      ? 'text-cyan-400 bg-white/[0.02]'
+                      : 'text-white/25 hover:text-white/50 hover:bg-white/[0.01]'
+                  }`}
+                >
                   {tab.icon}
                   {tab.label}
-                  {tab.count !== undefined && (
-                    <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold ${
-                      activeTab === tab.key ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'
-                    }`}>{tab.count}</span>
-                  )}
                   {activeTab === tab.key && (
-                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent" />
+                    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent" />
                   )}
                 </button>
               ))}
             </div>
 
-            <div className="p-4 max-h-[60vh] overflow-y-auto">
-              <div className="animate-fade-in">
-                {activeTab === 'signals' && (
-                  <div className="space-y-3">
-                    <ConfluenceScoring
-                      candles={candles}
-                      pivots={pivots}
-                      patterns={patterns}
-                      rsiValue={rsiData[rsiData.length - 1]}
-                      macdValue={macdData.histogram[macdData.histogram.length - 1]}
-                      sentiment={sentiment}
-                      multiTF={multiTFAnalysis}
-                    />
-                    <AISignalPanel
-                      candles={candles}
-                      pivots={pivots}
-                      patterns={patterns}
-                      rsiValue={rsiData[rsiData.length - 1]}
-                      macdValue={macdData.histogram[macdData.histogram.length - 1]}
-                      symbol={symbol}
-                      timeframe={timeframe}
-                      sentiment={sentiment}
-                      onAnalysisUpdate={handleAIAnalysisUpdate}
-                      autoRefresh={true}
-                      candleCloseCount={candleCloseCount}
-                      multiTFData={multiTFAnalysis}
-                    />
-                  </div>
-                )}
+            <div className="p-3 max-h-[55vh] overflow-y-auto">
+              {activeTab === 'live' && (
+                <div className="space-y-3 animate-fade-in">
+                  <SignalDisplay
+                    signal={signalData}
+                    structureState={structureState}
+                    patterns={uiPayload?.patterns || []}
+                    currentPrice={currentPrice}
+                  />
 
-                {activeTab === 'analysis' && (
-                  <div className="space-y-3">
-                    <PriceTicker candles={candles} symbol={symbol} />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <PivotTable pivots={pivots} currentPrice={candles[candles.length - 1]?.close ?? 0} />
-                      <PatternPanel patterns={patterns} />
+                  {/* Pivot Table Mini */}
+                  {pivotLevels.pp > 0 && (
+                    <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3">
+                      <h3 className="text-[10px] font-bold text-cyan-400/60 mb-2 flex items-center gap-1.5">
+                        <Target className="w-3 h-3" /> PIVOT LEVELS
+                      </h3>
+                      <div className="grid grid-cols-7 gap-1.5 text-center">
+                        {[
+                          { label: 'S3', value: pivotLevels.s3, color: 'text-green-400/60' },
+                          { label: 'S2', value: pivotLevels.s2, color: 'text-green-400/70' },
+                          { label: 'S1', value: pivotLevels.s1, color: 'text-green-400' },
+                          { label: 'PP', value: pivotLevels.pp, color: 'text-yellow-400' },
+                          { label: 'R1', value: pivotLevels.r1, color: 'text-red-400' },
+                          { label: 'R2', value: pivotLevels.r2, color: 'text-red-400/70' },
+                          { label: 'R3', value: pivotLevels.r3, color: 'text-red-400/60' },
+                        ].map(({ label, value, color }) => (
+                          <div key={label} className="py-1 px-0.5 rounded bg-white/[0.02]">
+                            <p className="text-[8px] text-white/20 mb-0.5">{label}</p>
+                            <p className={`text-[9px] font-mono font-bold ${color}`}>
+                              {value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {activeTab === 'mtf' && (
-                  <MultiTFPanel analysis={multiTFAnalysis} loading={mtfLoading} />
-                )}
+                  {/* Active Trendlines */}
+                  {trendlines.length > 0 && (
+                    <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3">
+                      <h3 className="text-[10px] font-bold text-cyan-400/60 mb-2 flex items-center gap-1.5">
+                        <TrendingUp className="w-3 h-3" /> ĐƯỜNG XU HƯỚNG ({trendlines.filter(t => t.isActive).length})
+                      </h3>
+                      <div className="space-y-1">
+                        {trendlines.filter(t => t.isActive).slice(0, 5).map((tl, i) => (
+                          <div key={i} className="flex items-center gap-2 py-1 px-2 rounded bg-white/[0.02] text-[10px]">
+                            <div className={`w-4 h-0.5 rounded ${
+                              tl.state === 'active_support' ? 'bg-green-400' :
+                              tl.state === 'active_resistance' ? 'bg-red-400' : 'bg-yellow-400'
+                            }`} />
+                            <span className="text-white/50 capitalize font-mono">{tl.kind}</span>
+                            <span className="text-white/30 font-mono">
+                              {tl.y1.toFixed(2)} → {tl.y2.toFixed(2)}
+                            </span>
+                            <span className="text-cyan-400/50 font-mono ml-auto">{tl.touches}x</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
-                {activeTab === 'trends' && (
-                  <div className="space-y-3">
-                    <VolumeChart candles={candles} />
-                    {aiAnalysis?.aiTrendLines && aiAnalysis.aiTrendLines.length > 0 ? (
-                      <div className="bg-card/80 backdrop-blur-sm rounded-lg border border-border/50 p-4">
-                        <h3 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
-                          <Brain className="w-3.5 h-3.5" />
-                          ĐƯỜNG XU HƯỚNG AI ({aiAnalysis.aiTrendLines.length})
-                        </h3>
-                        <div className="space-y-2">
-                          {aiAnalysis.aiTrendLines.map((line, i) => (
-                            <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-secondary/30 text-xs border border-border/30 hover:bg-secondary/50 transition-all duration-300">
-                              <div className="w-6 h-0.5 rounded" style={{
-                                backgroundColor: line.type === 'resistance' ? 'hsl(348, 90%, 60%)' :
-                                  line.type === 'support' ? 'hsl(145, 90%, 50%)' : 'hsl(45, 100%, 55%)'
-                              }} />
-                              <span className="text-foreground font-medium capitalize">{line.label || line.type}</span>
-                              <span className="text-muted-foreground font-mono">
-                                {line.startPrice.toFixed(2)} → {line.endPrice.toFixed(2)}
-                              </span>
-                            </div>
-                          ))}
+              {activeTab === 'analysis' && (
+                <div className="space-y-3 animate-fade-in">
+                  {/* Per-Timeframe Detail */}
+                  {Object.entries(tfData).map(([tf, data]) => (
+                    <div key={tf} className="bg-white/[0.02] border border-white/5 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-bold font-mono text-white/70">{tf.toUpperCase()}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[9px] font-bold ${
+                            data.state === 'bullish' ? 'text-green-400' :
+                            data.state === 'bearish' ? 'text-red-400' : 'text-yellow-400'
+                          }`}>
+                            {data.state.toUpperCase()}
+                          </span>
+                          <div className="w-12 h-1.5 rounded-full overflow-hidden flex bg-white/5">
+                            <div className="h-full bg-green-400/60 rounded-l-full" style={{ width: `${data.long}%` }} />
+                            <div className="h-full bg-red-400/60 rounded-r-full" style={{ width: `${data.short}%` }} />
+                          </div>
+                          <span className="text-[9px] font-mono text-white/30">
+                            {data.long}/{data.short}
+                          </span>
                         </div>
                       </div>
-                    ) : (
-                      <div className="bg-card/80 backdrop-blur-sm rounded-lg border border-border/50 p-4">
-                        <h3 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
-                          <Target className="w-3.5 h-3.5" />
-                          ĐƯỜNG XU HƯỚNG ({trendLines.length})
-                        </h3>
-                        <div className="space-y-2">
-                          {trendLines.map((line, i) => (
-                            <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-secondary/30 text-xs border border-border/30 hover:bg-secondary/50 transition-all duration-300">
-                              <div className="w-6 h-0.5 rounded" style={{ backgroundColor: line.color }} />
-                              <span className="text-foreground font-medium capitalize">{line.type}</span>
-                              <span className="text-muted-foreground font-mono">
-                                {line.startPrice.toFixed(2)} → {line.endPrice.toFixed(2)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  ))}
 
-                {activeTab === 'indicators' && (
-                  <div className="space-y-3">
-                    <RSIChart rsiData={rsiData} candles={candles} />
-                    <MACDChart macd={macdData.macd} signal={macdData.signal} histogram={macdData.histogram} candles={candles} />
-                    <VolumeChart candles={candles} />
-                  </div>
-                )}
+                  {Object.keys(tfData).length === 0 && (
+                    <div className="text-center py-8">
+                      <Layers className="w-6 h-6 text-white/10 mx-auto mb-2" />
+                      <p className="text-[11px] text-white/20 font-mono">Đang phân tích các khung thời gian...</p>
+                    </div>
+                  )}
+                </div>
+              )}
 
-                {activeTab === 'news' && (
-                  <NewsPanel
-                    symbol={symbol}
-                    currentPrice={candles[candles.length - 1]?.close}
-                    trend={aiAnalysis?.trend}
-                  />
-                )}
-
-                {activeTab === 'ai' && (
-                  <AIChatPanel
-                    candles={candles}
-                    pivots={pivots}
-                    patterns={patterns}
-                    rsiValue={rsiData[rsiData.length - 1]}
-                    macdValue={macdData.histogram[macdData.histogram.length - 1]}
-                    symbol={symbol}
-                    timeframe={timeframe}
-                  />
-                )}
-              </div>
+              {activeTab === 'news' && (
+                <NewsPanel
+                  symbol={symbol}
+                  currentPrice={currentPrice}
+                  trend={globalBias.direction === 'long' ? 'UPTREND' : globalBias.direction === 'short' ? 'DOWNTREND' : 'SIDEWAYS'}
+                />
+              )}
             </div>
           </div>
         </>
-      ) : null}
+      )}
     </div>
   );
 };
