@@ -38,6 +38,7 @@ const Index = () => {
     allCandles,
     activeTimeframe,
     setActiveTimeframe,
+    endpointLabel,
   } = useBinanceFutures(symbol);
 
   const chartCandles: EngineCandle[] = useMemo(() => {
@@ -128,9 +129,13 @@ const Index = () => {
                 <span className="w-1 h-1 rounded-full bg-green-400 animate-pulse" />
               </div>
             ) : (
-              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-500/5 border border-red-500/10">
-                <WifiOff className="w-2.5 h-2.5 text-red-400" />
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-yellow-500/5 border border-yellow-500/10">
+                <Activity className="w-2.5 h-2.5 text-yellow-400" />
+                <span className="text-[8px] text-yellow-400 font-mono">POLL</span>
               </div>
+            )}
+            {endpointLabel && (
+              <span className="text-[8px] text-white/20 font-mono">{endpointLabel}</span>
             )}
           </div>
         </div>
