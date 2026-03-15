@@ -37,7 +37,7 @@ export default function PipelineChart({
   const clearPriceLines = useCallback(() => {
     if (!candleSeriesRef.current) return;
     priceLinesRef.current.forEach(line => {
-      try { candleSeriesRef.current?.removePriceLine(line); } catch {}
+      try { candleSeriesRef.current?.removePriceLine(line); } catch { /* ignored */ }
     });
     priceLinesRef.current = [];
   }, []);
@@ -153,7 +153,7 @@ export default function PipelineChart({
 
     // Clear old trendline series
     tlSeriesRef.current.forEach(s => {
-      try { chartRef.current?.removeSeries(s); } catch {}
+      try { chartRef.current?.removeSeries(s); } catch { /* ignored */ }
     });
     tlSeriesRef.current = [];
 
