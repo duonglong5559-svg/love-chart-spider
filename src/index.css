@@ -197,4 +197,36 @@
   ::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground));
   }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .neon-border-green {
+    box-shadow: 0 0 6px rgba(0, 230, 118, 0.15), inset 0 0 6px rgba(0, 230, 118, 0.05);
+  }
+
+  .neon-border-red {
+    box-shadow: 0 0 6px rgba(255, 23, 68, 0.15), inset 0 0 6px rgba(255, 23, 68, 0.05);
+  }
+
+  .neon-border-cyan {
+    box-shadow: 0 0 6px rgba(0, 188, 212, 0.15), inset 0 0 6px rgba(0, 188, 212, 0.05);
+  }
+
+  .neon-text-green {
+    text-shadow: 0 0 8px rgba(0, 230, 118, 0.4);
+  }
+
+  .neon-text-red {
+    text-shadow: 0 0 8px rgba(255, 23, 68, 0.4);
+  }
+
+  .neon-text-cyan {
+    text-shadow: 0 0 8px rgba(0, 188, 212, 0.4);
+  }
 }
